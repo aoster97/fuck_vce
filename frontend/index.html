@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>刷题系统 (顺序抽取+乱序版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <style>
+        body { font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; line-height: 1.6; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #f0f2f5; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        
+        /* 导航标签基础样式 */
+        .nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+        .nav span { width: 35px; height: 35px; display: flex; align-items: center; justify-content: center; border: 1px solid #dcdfe6; cursor: pointer; border-radius: 4px; background: #fff; font-size: 14px; transition: 0.3s; }
+        
+        /* 状态颜色定义 */
+        .nav span.active { border: 2px solid #409eff; font-weight: bold; transform: scale(1.1); }
+        .nav span.flag { background-color: #e6a23c !important; color: white; }
+        .nav span.answered { background-color: #f0f9eb; border-color: #c2e7b0; }
+        
+        /* 结果标记：红绿灯功能 */
+        .nav span.correct { background-color: #67c23a !important; color: white; border-color: #529b2e; }
+        .nav span.wrong { background-color: #f56c6c !important; color: white; border-color: #c45656; }
+
+        .markdown-body pre { background-color: #f6f8fa; padding: 15px; border-radius: 6px; overflow: auto; }
+        .option-item { position: relative; padding: 12px 12px 12px 45px; border: 1px solid #ebeef5; margin-bottom: 10px; border-radius: 8px; cursor: pointer; background: #fff; transition: all 0.2s; }
+        .option-item:hover { background-color: #f5f7fa; }
+        .option-item.selected { background-color: #ecf5ff; border-color: #409eff; }
+        .option-item::before { content: attr(data-letter); position: absolute; left: 15px; font-weight: bold; color: #909399; }
+        
+        .controls { display: flex; gap: 10px; margin-top: 25px; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; background: #409eff; color: white; transition: opacity 0.2s; }
+        button:hover { opacity: 0.8; }
+        .btn-success { background: #67c23a; width: 100%; margin-top: 20px; font-size: 1.1em; font-weight: bold; }
+        .answer-area { margin-top: 20px; padding: 15px; background: #fef0f0; color: #f56c6c; border-radius: 8px; border: 1px solid #fde2e2; }
+        .answer-area.is-correct { background: #f0f9eb; color: #67c23a; border-color: #c2e7b0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin:0;">刷题系统</h2>
+        <div style="font-size: 0.9em; color: #606266;">累计用时: <b id="timer" style="color:#409eff">0</b>s</div>
+    </div>
+
+    <div style="margin: 20px 0; padding: 20px; background: #f4f4f5; border-radius: 8px; display: flex; align-items: center; gap: 15px;">
+        <span>抽取前几题：</span>
+        <input type="number" id="count" value="10" min="1" style="width: 70px; padding: 5px; border-radius: 4px; border: 1px solid #dcdfe6;">
+        <button onclick="initQuiz()">开始测试 (顺序抽取后乱序)</button>
+    </div>
+
+    <div id="quiz-container" style="display: none;">
+        <div id="q-text" class="markdown-body" style="font-size: 1.1em; margin-bottom: 20px; min-height: 50px;"></div>
+        <div id="options-container"></div>
+        <div id="ans-display" class="answer-area" style="display: none;"></div>
+
+        <div class="controls">
+            <button onclick="changeQ(-1)">上一题</button>
+            <button onclick="changeQ(1)">下一题</button>
+            <button style="background:#e6a23c" onclick="toggleFlag()">标记本题</button>
+        </div>
+
+        <div class="nav" id="nav-dots"></div>
+        <button class="btn-success" id="submit-btn" onclick="submitToBackend()">提交试卷并查看对错</button>
+    </div>
+</div>
+
+<script>
+    let questions = [];
+    let currentIndex = 0;
+    let userAnswers = {}; 
+    let resultsMap = {}; 
+    let flagged = new Set();
+    let isFinished = false;
+    let timer = 0, timerId = null;
+
+    const API_URL = "http://127.0.0.1:8000";
+
+    marked.setOptions({ highlight: (code) => hljs.highlightAuto(code).value, breaks: true });
+
+    /**
+     * 洗牌算法：打乱数组顺序
+     */
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    async function initQuiz() {
+        const count = document.getElementById('count').value;
+        try {
+            const res = await fetch(`${API_URL}/questions?count=${count}`);
+            let fetchedData = await res.json();
+            
+            // 步骤1：按 ID 排序，确保拿到的是 JSON 中的前 N 题
+            fetchedData.sort((a, b) => a.id - b.id);
+            
+            // 步骤2：在抽取的这 N 题内部进行随机打乱
+            questions = shuffleArray(fetchedData);
+
+            // 重置所有状态
+            currentIndex = 0; 
+            userAnswers = {}; 
+            resultsMap = {}; 
+            flagged.clear(); 
+            isFinished = false;
+            
+            document.getElementById('quiz-container').style.display = 'block';
+            startTimer();
+            render();
+        } catch (e) { 
+            alert("后端连接失败，请检查 main.py 是否启动"); 
+        }
+    }
+
+    function startTimer() {
+        clearInterval(timerId); timer = 0;
+        timerId = setInterval(() => { timer++; document.getElementById('timer').innerText = timer; }, 1000);
+    }
+
+    function render() {
+        if (!questions.length) return;
+        const q = questions[currentIndex];
+        document.getElementById('q-text').innerHTML = `<b>第 ${currentIndex + 1} 题 (ID: ${q.id}):</b> ` + marked.parse(q.question);
+        
+        const optContainer = document.getElementById('options-container');
+        optContainer.innerHTML = '';
+        
+        q.options.forEach((opt, index) => {
+            const div = document.createElement('div');
+            const isSelected = (userAnswers[q.id] || []).includes(opt);
+            div.className = `option-item markdown-body ${isSelected ? 'selected' : ''}`;
+            div.setAttribute('data-letter', String.fromCharCode(65 + index) + ".");
+            div.innerHTML = marked.parse(opt);
+            div.onclick = () => {
+                if(isFinished) return;
+                let ans = userAnswers[q.id] || [];
+                const idx = ans.indexOf(opt);
+                idx > -1 ? ans.splice(idx, 1) : ans.push(opt);
+                userAnswers[q.id] = ans;
+                render();
+            };
+            optContainer.appendChild(div);
+        });
+
+        const ansBox = document.getElementById('ans-display');
+        if (isFinished) {
+            ansBox.style.display = 'block';
+            const isCorrect = resultsMap[q.id];
+            ansBox.className = `answer-area ${isCorrect ? 'is-correct' : ''}`;
+            ansBox.innerHTML = `
+                <b>${isCorrect ? '✓ 回答正确' : '✗ 回答错误'}</b><br>
+                正确答案是：<span style="letter-spacing:2px; font-weight:bold;">${q.answer}</span>
+            `;
+        } else {
+            ansBox.style.display = 'none';
+        }
+
+        renderNav();
+        document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    }
+
+    function renderNav() {
+        const nav = document.getElementById('nav-dots');
+        nav.innerHTML = questions.map((q, i) => {
+            let cls = i === currentIndex ? 'active' : '';
+            if (flagged.has(q.id)) cls += ' flag';
+            
+            if (isFinished) {
+                cls += resultsMap[q.id] ? ' correct' : ' wrong';
+            } else if (userAnswers[q.id] && userAnswers[q.id].length > 0) {
+                cls += ' answered';
+            }
+            
+            return `<span class="${cls}" onclick="currentIndex=${i};render();">${i + 1}</span>`;
+        }).join('');
+    }
+
+    async function submitToBackend() {
+        if (!confirm("确定要交卷吗？交卷后将显示答案和红绿标记。")) return;
+        clearInterval(timerId);
+
+        const payload = Object.keys(userAnswers).map(qid => ({
+            id: parseInt(qid),
+            answer: userAnswers[qid].sort().join("") 
+        }));
+
+        try {
+            const res = await fetch(`${API_URL}/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            
+            // 判分逻辑：将用户选择与题目正确答案对比
+            questions.forEach(q => {
+                // 如果题目是多选，userAnswers[q.id] 里是数组，排序后拼接对比
+                // 这里的对比逻辑取决于 q.answer 的格式（例如 "A" 或 "ABD"）
+                // 假设选项文本打乱了，最好的办法是后端返回对错，这里暂用前端文本比对
+                const userSelection = (userAnswers[q.id] || []).sort().join("");
+                resultsMap[q.id] = (userSelection === q.answer);
+            });
+
+            isFinished = true;
+            alert(`测试完成！\n正确题数: ${data.score} / ${data.total}\n用时: ${timer}秒`);
+            render(); 
+        } catch (e) {
+            alert("提交出错，请确保后端服务正常");
+        }
+    }
+
+    function changeQ(step) {
+        currentIndex = Math.max(0, Math.min(questions.length - 1, currentIndex + step));
+        render();
+    }
+
+    function toggleFlag() {
+        const qid = questions[currentIndex].id;
+        flagged.has(qid) ? flagged.delete(qid) : flagged.add(qid);
+        renderNav();
+    }
+</script>
+</body>
+</html>

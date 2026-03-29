@@ -1,0 +1,57 @@
+[
+  {
+    "id": 1,
+    "question": "在 MySQL 中，哪种存储引擎是默认的，且支持事务（ACID）和行级锁定？",
+    "options": [
+      "MyISAM",
+      "InnoDB",
+      "Memory",
+      "Archive"
+    ],
+    "answer": "B"
+  },
+  {
+    "id": 2,
+    "question": "执行以下 SQL 语句后，返回的结果是多少？\n\n```sql\nSELECT ABS(-2026);\n```",
+    "options": [
+      "0",
+      "-2026",
+      "2026",
+      "NULL"
+    ],
+    "answer": "C"
+  },
+  {
+    "id": 3,
+    "question": "（多选题）关于 MySQL 的 `DELETE` 和 `TRUNCATE` 语句，以下哪些描述是正确的？",
+    "options": [
+      "DELETE 语句可以配合 WHERE 子句删除特定行",
+      "TRUNCATE 属于 DDL 语言，操作不可回滚",
+      "DELETE 语句删除数据后会重置自增 ID (AUTO_INCREMENT)",
+      "TRUNCATE 会清空整个表并释放存储空间"
+    ],
+    "answer": "ABD"
+  },
+  {
+    "id": 4,
+    "question": "在 MySQL 配置文件 `my.cnf` 或 `my.ini` 中，默认的服务端口参数名是什么？",
+    "options": [
+      "server_id",
+      "socket",
+      "port",
+      "listen"
+    ],
+    "answer": "C"
+  },
+  {
+    "id": 5,
+    "question": "如果你需要从 `employees` 表中找出入职日期 `hire_date` 为空的所有记录，应该使用哪个条件？",
+    "options": [
+      "WHERE hire_date = NULL",
+      "WHERE hire_date IS NULL",
+      "WHERE hire_date EMPTY",
+      "WHERE hire_date == NULL"
+    ],
+    "answer": "B"
+  }
+]
